@@ -8,7 +8,7 @@ __pycache__/
 
 # Data files
 *.csv
-*.fits
+*.fits  # <-- Mantienes esta línea
 *.dat
 *.db
 *.npz
