@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Data files
+*.csv
+*.fits
+*.dat
+*.db
+*.npz
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Virtual environment
+env/
+venv/
+ENV/
+.venv/
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Ignore .env files for sensitive credentials
+.env
+
+# Compiled files
+*.out
+*.o
+
+# Other
+*.pdf
+*.aux
+*.bbl
+*.blg
+*.synctex.gz
+*~
+*#
