@@ -55,9 +55,12 @@ def main():
         except Exception as e:
             print("No existing Dask client found or error shutting down existing client:", e)
 
-        # Configure Dask Client with increased timeout
-        config.set({"distributed.comm.timeouts.connect": "300s", "distributed.comm.timeouts.tcp": "300s"})
-        client = Client(n_workers=4, memory_limit="8GB")  # Reduced number of workers
+        # Configure Dask Client with increased timeout and more workers
+        config.set({
+            "distributed.comm.timeouts.connect": "300s",
+            "distributed.comm.timeouts.tcp": "300s"
+        })
+        client = Client(n_workers=8, threads_per_worker=2, memory_limit="4GB")
         print(client)
     except Exception as e:
         print("Error al configurar Dask Client:", e)
@@ -155,11 +158,16 @@ def main():
         # Convert the Catalog to a Dask DataFrame
         dual_sqg_ddf = dd.from_delayed(dual_sqg.to_delayed())
 
-        # Combine all partitions into a single DataFrame
-        single_df = dual_sqg_ddf.compute()
+        # Convert Dask DataFrame to pandas and concatenate in memory
+        pandas_dfs = []
+        for partition in dual_sqg_ddf.to_delayed():
+            pandas_dfs.append(partition.compute())
 
-        # Save the entire dataset to CSV
-        single_df.to_csv('dual_sqg_full.csv', index=False)
+        combined_df = pd.concat(pandas_dfs, ignore_index=True)
+
+        # Save the combined DataFrame to a single CSV file
+        combined_df.to_csv('dual_sqg_full_test.csv', index=False)
+
         print("Todos los datos del resultado del crossmatch se han guardado en 'dual_sqg_full.csv'")
     except Exception as e:
         print("Error durante el guardado de todos los datos del crossmatch:", e)
