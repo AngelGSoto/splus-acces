@@ -2,34 +2,37 @@ import splusdata
 import lsdb
 import pandas as pd
 from getpass import getpass
-from dask.distributed import Client
 import urllib
 import time
-from dask import config, dataframe as dd
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def retry_request(func, retries=10, delay=20, *args, **kwargs):
     """Retry a request function with specified retries and delay."""
     for attempt in range(retries):
         try:
             return func(*args, **kwargs)
-        except urllib.error.URLError as e:
+        except (urllib.error.URLError, ConnectionRefusedError, TimeoutError) as e:
             if attempt == retries - 1:
                 raise
             print(f"Retrying due to error: {e}. Attempt {attempt + 1}/{retries}")
             time.sleep(delay)
 
-def inspect_catalog(catalog):
-    # Check catalog type and attributes
-    print("Catalog type:", type(catalog))
-    print("Available attributes and methods:")
-    print(dir(catalog))
-
-    # Try to print the first few rows (if possible)
-    try:
-        print("First few rows of catalog:")
-        print(catalog.head())  # This might work based on available methods
-    except Exception as e:
-        print(f"Error previewing catalog: {e}")
+def process_partition(partition, index, temp_dir, retries=5, delay=10):
+    """Process and save a partition of the DataFrame with retries."""
+    for attempt in range(retries):
+        try:
+            partition_file = os.path.join(temp_dir, f'partition_{index}.csv')
+            partition_df = partition.compute()
+            partition_df.to_csv(partition_file, index=False)
+            print(f"Partition {index} saved to {partition_file}")
+            return
+        except (urllib.error.URLError, ConnectionRefusedError, TimeoutError) as e:
+            if attempt == retries - 1:
+                print(f"Failed to process partition {index} after {retries} attempts.")
+                raise
+            print(f"Retrying partition {index} due to error: {e}. Attempt {attempt + 1}/{retries}")
+            time.sleep(delay)
 
 def main():
     # Authenticate to splus.cloud
@@ -45,25 +48,6 @@ def main():
         print("Enlaces iDR5 obtenidos:", idr5_links)
     except Exception as e:
         print("Error al obtener enlaces de iDR5:", e)
-        return
-
-    try:
-        # Check for existing Dask client and shut it down
-        try:
-            existing_client = Client()
-            existing_client.shutdown()
-        except Exception as e:
-            print("No existing Dask client found or error shutting down existing client:", e)
-
-        # Configure Dask Client with increased timeout and more workers
-        config.set({
-            "distributed.comm.timeouts.connect": "300s",
-            "distributed.comm.timeouts.tcp": "300s"
-        })
-        client = Client(n_workers=8, threads_per_worker=2, memory_limit="4GB")
-        print(client)
-    except Exception as e:
-        print("Error al configurar Dask Client:", e)
         return
 
     try:
@@ -151,22 +135,35 @@ def main():
         return
 
     try:
-        # Inspect the type of dual_sqg
-        print(f"Tipo de 'dual_sqg': {type(dual_sqg)}")
-        inspect_catalog(dual_sqg)  # Inspect the catalog
+        # Define temporary directory for intermediate CSV files
+        temp_dir = "temp_csvs"
+        os.makedirs(temp_dir, exist_ok=True)
 
-        # Convert the Catalog to a Dask DataFrame
-        dual_sqg_ddf = dd.from_delayed(dual_sqg.to_delayed())
+        # Initialize partition index
+        partition_index = 0
 
-        # Convert Dask DataFrame to pandas and concatenate in memory
-        pandas_dfs = []
-        for partition in dual_sqg_ddf.to_delayed():
-            pandas_dfs.append(partition.compute())
+        # Use ThreadPoolExecutor to process partitions in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(process_partition, partition, i, temp_dir) for i, partition in enumerate(dual_sqg.partitions)]
 
-        combined_df = pd.concat(pandas_dfs, ignore_index=True)
+            # Wait for all futures to complete
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Error processing partition: {e}")
+
+        # Combine the temporary CSV files into a single DataFrame
+        all_files = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.startswith('partition_')]
+        combined_df = pd.concat((pd.read_csv(f) for f in all_files), ignore_index=True)
 
         # Save the combined DataFrame to a single CSV file
-        combined_df.to_csv('dual_sqg_full_test.csv', index=False)
+        combined_df.to_csv('dual_sqg_full.csv', index=False)
+
+        # Cleanup temporary directory
+        for f in all_files:
+            os.remove(f)
+        os.rmdir(temp_dir)
 
         print("Todos los datos del resultado del crossmatch se han guardado en 'dual_sqg_full.csv'")
     except Exception as e:
