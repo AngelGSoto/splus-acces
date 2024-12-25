@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Aumenta el tiempo de espera a 30 minutos
 
     strategy:
       matrix:
@@ -22,9 +23,6 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: ${{ matrix.node-version }}
-
-    - name: Change directory to project
-      run: cd project
 
     - name: Install dependencies
       run: npm install
