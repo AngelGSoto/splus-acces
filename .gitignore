@@ -12,6 +12,7 @@ __pycache__/
 *.dat
 *.db
 *.npz
+*.fits
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
